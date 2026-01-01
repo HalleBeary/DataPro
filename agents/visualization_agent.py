@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 ┌─────────────────────────────────────────────────────────────┐
 │                  VISUALIZATION AGENT                        │
 │                                                             │
-│  1. _analyze_data()    → OpenAI decides:                  │
+│  1. _analyze_data()    → OpenAI decides:                    │
 │                          - chart_type: "bar"                │
 │                          - title: "Top 5 Genres..."         │
 │                          - insights: ["Rock dominates..."]  │
@@ -92,30 +92,30 @@ class VisualizationAgent:
         """
         prompt = f"""Analyze this data for visualization.
 
-USER QUERY: {user_query}
+    USER QUERY: {user_query}
 
-DATA (first 10 rows): {json.dumps(data[:10], indent=2)}
+    DATA (first 10 rows): {json.dumps(data[:10], indent=2)}
 
-METADATA: {json.dumps(metadata, indent=2)}
+    METADATA: {json.dumps(metadata, indent=2)}
 
-Respond with JSON only:
-{{
-    "chart_type": "bar" | "line" | "pie" | "scatter",
-    "title": "descriptive chart title",
-    "x_column": "column name for x-axis",
-    "y_column": "column name for y-axis",
-    "highlights": ["indices of data points to emphasize (0-based)"],
-    "insights": ["1-2 key insights about the data"],
-    "suggestions": ["1 follow-up analysis the user might want"]
-}}
+    Respond with JSON only:
+    {{
+        "chart_type": "bar" | "line" | "pie" | "scatter",
+        "title": "descriptive chart title",
+        "x_column": "column name for x-axis",
+        "y_column": "column name for y-axis",
+        "highlights": ["indices of data points to emphasize (0-based)"],
+        "insights": ["1-2 key insights about the data"],
+        "suggestions": ["1 follow-up analysis the user might want"]
+    }}
 
-RULES:
-- Choose chart_type based on data shape and query intent
-- Bar: comparisons, rankings, categories
-- Line: trends over time
-- Pie: parts of a whole (use only if <7 categories)
-- Scatter: relationships between two numeric columns
-"""
+    RULES:
+    - Choose chart_type based on data shape and query intent
+    - Bar: comparisons, rankings, categories
+    - Line: trends over time
+    - Pie: parts of a whole (use only if <7 categories)
+    - Scatter: relationships between two numeric columns
+    """
 
         response = self.client.chat.completions.create(
             model=self.model,

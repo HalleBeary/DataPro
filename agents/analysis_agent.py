@@ -11,7 +11,7 @@ USER QUERY: "Show me top 5 genres by track count"
 │                                                             │
 │  1. _get_schema()      → Reads tables/columns from SQLite   │
 │                                                             │
-│  2. _generate_sql()    → OpenAI converts NL to SQL ⭐       │
+│  2. _generate_sql()    → OpenAI converts NL to SQL          │
 │                          "SELECT g.Name, COUNT(t.TrackId)   │
 │                           FROM genres g JOIN tracks t..."   │
 │                                                             │
@@ -29,7 +29,7 @@ USER QUERY: "Show me top 5 genres by track count"
 """
 
 
-# IMRPOVEMENT COULD BE USING REACT LOOP
+# TODO IMRPOVEMENT COULD BE USING REACT LOOP ??
 
 class AnalysisAgent:
     def __init__(self, api_key: str = None):
@@ -42,16 +42,16 @@ class AnalysisAgent:
         """
         try:
             # Step 1: Get database schema
-            schema = self._get_schema(database_path)
+            schema = self._get_schema(database_path) # get database structure ("shape") which depends on which database is accessed (Chinook, nortwind or anything)
 
-            # Step 2: Generate SQL from natural language
+            # Step 2: Generate SQL from natural language. This is the agent part.
             sql = self._generate_sql(query, schema)
 
             # Step 3: Execute SQL
-            results, columns = self._execute_sql(database_path, sql)
+            results, columns = self._execute_sql(database_path, sql) # execute the SQL query generated from the agent.
 
             # Step 4: Structure output
-            data = [dict(zip(columns, row)) for row in results]
+            data = [dict(zip(columns, row)) for row in results] # create structured output in dictionary format that can be used by the visualizer_agent
 
             return {
                 "success": True,
@@ -98,21 +98,32 @@ class AnalysisAgent:
         """
         system_prompt = f"""You are a SQL expert. Generate SQLite-compatible SQL queries.
 
-DATABASE SCHEMA:
-{schema}
 
-RULES:
-- Return ONLY the SQL query, no explanations
-- Use SQLite syntax
-- Always limit results to 100 rows max unless user specifies
-- Use appropriate JOINs when needed
-"""
+    DATABASE SCHEMA:
+    {schema}
+    
+    RULES:
+    - Return ONLY the SQL query, no explanations
+    - Use SQLite syntax
+    - Always limit results to 100 rows max unless user specifies
+    - Use appropriate JOINs when needed
+    """
+
+# Rules why?
+
+  #  RULES:
+  #  - Return ONLY the SQL query, no explanations ----> No text around SQL query, else you need to get rid of "here is the query or other shit"
+  #  - Use SQLite syntax ----> #Different from MySQL/PostgreSQL. Avoids incompatibility issues
+  #  - Always limit results to 100 rows max unless user specifies ----> Safety, prevents returning millions rows by accident for example
+  #  - Use appropriate JOINs when needed ---->   Encourages proper relational queries instead of lazy single-table selects
+
+  # TODO How can this rule list be improved?
 
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": query}
+                {"role": "system", "content": system_prompt}, # System is an SQL expert
+                {"role": "user", "content": query}  # Query is user input 
             ],
             temperature=0
         )

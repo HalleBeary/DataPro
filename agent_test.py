@@ -42,4 +42,3 @@ if analysis_result["success"]:
     print(f"Insights: {viz_result.get('insights', [])}")
     print(f"Suggestions: {viz_result.get('suggestions', [])}")
 
-OPENAI_API_KEY=sk-your-key-here
