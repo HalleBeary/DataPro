@@ -10,3 +10,6 @@ Agentic AI project on data analysis/visualization.
 3. Run: `python main.py`
 
 Databases (chinook.db, northwind_small.sqlite) are included in `data/`
+
+
+
