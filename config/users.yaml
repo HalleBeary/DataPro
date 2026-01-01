@@ -1,0 +1,7 @@
+databases:
+  chinook:
+    path: "./data/chinook.db"
+    description: "Music store - artists, albums, tracks, invoices, customers"
+  northwind:
+    path: "./data/northwind_small.sqlite"
+    description: "Business ERP - customers, orders, products, employees"
