@@ -18,33 +18,27 @@ class Core:
         self.visualization_agent = VisualizationAgent(api_key=api_key)
 
     def _load_yaml(self, filename: str) -> dict:
-        """Load a YAML config file"""
         filepath = os.path.join(self.config_path, filename)
         with open(filepath, "r") as f:
             return yaml.safe_load(f)
 
     def list_databases(self) -> list:
-        """Return available database names"""
         return list(self.databases["databases"].keys())
 
     def list_users(self) -> list:
-        """Return available usernames"""
         return list(self.users["users"].keys())
 
     def check_access(self, user: str, database: str) -> bool:
-        """Check if user has access to database"""
         if user not in self.users["users"]:
             return False
         allowed = self.users["users"][user].get("allowed_databases", [])
         return database in allowed
 
     def get_database_path(self, database: str) -> str:
-        """Get file path for a database"""
         return self.databases["databases"][database]["path"]
 
 
     def get_allowed_databases(self, user: str) -> list: # connect users to allowed databases automatically.
-        """Get list of databases user can access"""
         if user not in self.users["users"]:
             return []
         return self.users["users"][user].get("allowed_databases", [])

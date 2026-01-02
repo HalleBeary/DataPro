@@ -40,7 +40,7 @@ class AnalysisAgent:
         """
         Main entry point: natural language query → structured data
         """
-        try:
+        try: 
             # Step 1: Get database schema
             schema = self._get_schema(database_path) # get database structure ("shape") which depends on which database is accessed (Chinook, nortwind or anything)
 
