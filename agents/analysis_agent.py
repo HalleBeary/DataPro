@@ -132,11 +132,16 @@ class AnalysisAgent:
         # Build context string if available
         context_str = ""
         if context:
+            suggestions_str = ""
+            if context.get("previous_suggestions"):
+                suggestions_str = f"\nPREVIOUS SUGGESTIONS: {context.get('previous_suggestions')}"
+            
             context_str = f"""
 PREVIOUS QUERY: {context.get('previous_query', 'None')}
-PREVIOUS RESULTS (first 10 rows): {context.get('previous_data', [])}
+PREVIOUS RESULTS (first 10 rows): {context.get('previous_data', [])}{suggestions_str}
 
-Use this context to understand references like "these", "those", "the same", etc.
+Use this context to understand references like "these", "those", "the same", "that suggestion", etc.
+If user says "follow that suggestion" or similar, use the PREVIOUS SUGGESTIONS to determine what to do.
 """
 
         system_prompt = f"""You are a SQL expert. Generate SQLite-compatible SQL queries based on user questions.
@@ -152,6 +157,7 @@ RULES:
 - Always limit results to 100 rows max unless user specifies otherwise
 - Use appropriate JOINs when data spans multiple tables
 - Use clear column aliases for aggregations
+- For time-based trends, prefer yearly aggregations unless user asks specifically for montly/daily
 - If the user refers to previous results, use the context to understand what they mean
 """
     

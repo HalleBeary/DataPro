@@ -120,7 +120,8 @@ def main():
         if last_result and last_result.get("success"):
             context = {
                 "previous_query": last_result.get("query"),
-                "previous_data": last_result.get("analysis", {}).get("data", [])[:10]
+                "previous_data": last_result.get("analysis", {}).get("data", [])[:10],
+                "previous_suggestions": last_result.get("visualization", {}).get("suggestions", []) # include suggestion
             }
 
         # Run the pipeline
