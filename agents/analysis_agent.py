@@ -1,6 +1,14 @@
 import sqlite3
 import json
-from openai import OpenAI
+import time
+from openai import (
+    OpenAI,
+    AuthenticationError,
+    RateLimitError,
+    APIConnectionError,
+    BadRequestError,
+    APIError
+)
 
 """
 USER QUERY: "Show me top 5 genres by track count"
@@ -31,26 +39,51 @@ USER QUERY: "Show me top 5 genres by track count"
 
 # TODO IMRPOVEMENT COULD BE USING REACT LOOP ??
 
-# TODO Improve error handling 
-
 class AnalysisAgent:
     def __init__(self, api_key: str = None):
         self.client = OpenAI(api_key=api_key)
         self.model = "gpt-4o"
+        self.max_retries = 3
 
-    def run(self, query: str, database_path: str) -> dict: 
-        try: 
+        # Define the tool for SQL execution
+        self.tools = [{
+            "type": "function",
+            "function": {
+                "name": "execute_sql",
+                "description": "Execute a SQL query on the SQLite database to answer the user's question",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "sql": {
+                            "type": "string",
+                            "description": "The SQLite-compatible SQL query to execute"
+                        },
+                        "explanation": {
+                            "type": "string",
+                            "description": "Brief explanation of what this query does"
+                        }
+                    },
+                    "required": ["sql", "explanation"]
+                }
+            }
+        }]
+
+    def run(self, query: str, database_path: str, context: dict = None) -> dict:
+        """
+        Main entry point: natural language query → structured data
+        """
+        try:
             # Step 1: Get database schema
-            schema = self._get_schema(database_path) # get database structure ("shape") which depends on which database is accessed (Chinook, nortwind or anything)
+            schema = self._get_schema(database_path)
 
-            # Step 2: Generate SQL from natural language. This is the agent part.
-            sql = self._generate_sql(query, schema)
+            # Step 2: Generate SQL using function calling
+            sql, explanation = self._generate_sql(query, schema, context)
 
             # Step 3: Execute SQL
-            results, columns = self._execute_sql(database_path, sql) # execute the SQL query generated from the agent.
+            results, columns = self._execute_sql(database_path, sql)
 
             # Step 4: Structure output
-            data = [dict(zip(columns, row)) for row in results] # create structured output in dictionary format that can be used by the visualizer_agent
+            data = [dict(zip(columns, row)) for row in results]
 
             return {
                 "success": True,
@@ -58,7 +91,8 @@ class AnalysisAgent:
                 "metadata": {
                     "columns": columns,
                     "row_count": len(data),
-                    "sql": sql
+                    "sql": sql,
+                    "explanation": explanation
                 }
             }
 
@@ -70,7 +104,10 @@ class AnalysisAgent:
                 "metadata": {}
             }
 
-    def _get_schema(self, database_path: str) -> str: # extract schema from SQL database
+    def _get_schema(self, database_path: str) -> str:
+        """
+        Extract schema from SQLite database
+        """
         conn = sqlite3.connect(database_path)
         cursor = conn.cursor()
 
@@ -87,26 +124,37 @@ class AnalysisAgent:
 
         conn.close()
         return "\n\n".join(schema_parts)
+
+    def _generate_sql(self, query: str, schema: str, context: dict = None) -> tuple:
+        """
+        Use OpenAI function calling to generate SQL from natural language
+        """
+        # Build context string if available
+        context_str = ""
+        if context:
+            context_str = f"""
+PREVIOUS QUERY: {context.get('previous_query', 'None')}
+PREVIOUS RESULTS (first 10 rows): {context.get('previous_data', [])}
+
+Use this context to understand references like "these", "those", "the same", etc.
+"""
+
+        system_prompt = f"""You are a SQL expert. Generate SQLite-compatible SQL queries based on user questions.
+
+DATABASE SCHEMA:
+{schema}
+
+{context_str}
+
+RULES:
+- Use the execute_sql function to run your query
+- Use SQLite syntax only
+- Always limit results to 100 rows max unless user specifies otherwise
+- Use appropriate JOINs when data spans multiple tables
+- Use clear column aliases for aggregations
+- If the user refers to previous results, use the context to understand what they mean
+"""
     
-
-
-    def _generate_sql(self, query: str, schema: str) -> str: # TODO is agent able to handle multiple questions at once?
-
-
-        system_prompt = f"""You are a SQL expert. Generate SQLite-compatible SQL queries.
-
-    # ? Should this method use tools ?
-
-    DATABASE SCHEMA:
-    {schema}
-    
-    RULES:
-    - Return ONLY the SQL query, no explanations
-    - Use SQLite syntax
-    - Always limit results to 100 rows max unless user specifies
-    - Use appropriate JOINs when needed
-    """
-
 # Rules why?
 
   #  RULES:
@@ -115,35 +163,78 @@ class AnalysisAgent:
   #  - Always limit results to 100 rows max unless user specifies ----> Safety, prevents returning millions rows by accident for example
   #  - Use appropriate JOINs when needed ---->   Encourages proper relational queries instead of lazy single-table selects
 
-  # TODO How can this rule list be improved?
+  # TODO How can this rule list be improved? 
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt}, # System is an SQL expert
-                {"role": "user", "content": query}  # Query is user input 
-            ],
-            temperature=0
-        )
 
-        sql = response.choices[0].message.content.strip()
-        
-        # Clean up if wrapped in markdown code blocks
-        if sql.startswith("```"):
-            sql = sql.split("\n", 1)[1]  # Remove first line
-            sql = sql.rsplit("```", 1)[0]  # Remove last ```
-        
-        return sql.strip()
+        for attempt in range(self.max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": query}
+                    ],
+                    tools=self.tools,
+                    tool_choice={"type": "function", "function": {"name": "execute_sql"}},
+                    temperature=0
+                )
 
-    def _execute_sql(self, database_path: str, sql: str) -> tuple: # Executes SQL, returns results and column names
+                # Extract function call
+                tool_call = response.choices[0].message.tool_calls[0]
+                arguments = json.loads(tool_call.function.arguments)
+
+                sql = arguments.get("sql", "")
+                explanation = arguments.get("explanation", "")
+
+                return sql, explanation
+
+            except AuthenticationError:
+                raise Exception("Invalid API key. Please check your OPENAI_API_KEY.")
+
+            except RateLimitError:
+                if attempt < self.max_retries - 1:
+                    wait_time = 2 ** attempt
+                    print(f"⏳ Rate limited. Waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                else:
+                    raise Exception("Rate limit exceeded. Please try again later.")
+
+            except APIConnectionError:
+                if attempt < self.max_retries - 1:
+                    print("🔄 Connection error. Retrying...")
+                    time.sleep(1)
+                else:
+                    raise Exception("Could not connect to OpenAI. Check your internet.")
+
+            except BadRequestError as e:
+                raise Exception(f"Invalid request: {str(e)}")
+
+            except APIError as e:
+                if attempt < self.max_retries - 1:
+                    print("🔄 OpenAI server error. Retrying...")
+                    time.sleep(1)
+                else:
+                    raise Exception(f"OpenAI error: {str(e)}")
+
+
+    def _execute_sql(self, database_path: str, sql: str) -> tuple: # returns output and column names
 
         conn = sqlite3.connect(database_path)
         cursor = conn.cursor()
-        cursor.execute(sql)
-        
-        results = cursor.fetchall()
-        columns = [description[0] for description in cursor.description]
-        
+
+        try:
+            cursor.execute(sql)
+            results = cursor.fetchall()
+            columns = [description[0] for description in cursor.description]
+        except sqlite3.Error as e:
+            conn.close()
+            raise Exception(f"SQL execution error: {str(e)}")
+
         conn.close()
         return results, columns
     
+
+
+
+
+

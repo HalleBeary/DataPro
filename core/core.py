@@ -43,14 +43,13 @@ class Core:
             return []
         return self.users["users"][user].get("allowed_databases", [])
     
-    def run(self, user: str, database: str, query: str) -> dict: 
+    def run(self, user: str, database: str, query: str, context: dict = None) -> dict:
         """
-        Core pipeline:
-
-        1. Check permissions (User restrictions)
+        Main orchestration flow:
+        1. Check permissions
         2. Run Analysis Agent
         3. Run Visualization Agent
-        4. Return results
+        4. Return combined results
         """
         # Step 1: Check permissions
         if user not in self.users["users"]:
@@ -72,13 +71,14 @@ class Core:
                 "error": f"Unknown database: '{database}'"
             }
         
-        db_path = self.get_database_path(database) 
+        db_path = self.get_database_path(database)
 
-        # Step 3: Run Analysis Agent takes in query and database as arguments
+        # Step 3: Run Analysis Agent (with context)
         print(f"🔍 Analyzing: {query}")
-        analysis_result = self.analysis_agent.run(  # Output dictionary 
+        analysis_result = self.analysis_agent.run(
             query=query,
-            database_path=db_path
+            database_path=db_path,
+            context=context
         )
 
         if not analysis_result["success"]:
@@ -89,7 +89,7 @@ class Core:
             }
 
         # Step 4: Run Visualization Agent
-        print(f"📊 Generating visualization...") 
+        print(f"📊 Generating visualization...")
         viz_result = self.visualization_agent.run(
             data=analysis_result["data"],
             metadata=analysis_result["metadata"],

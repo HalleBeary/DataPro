@@ -2,8 +2,6 @@ import os
 from dotenv import load_dotenv
 from core.core import Core
 
-
-
 # Currently CLI
 
 # TODO Make possible to take in multiple questions at once (comprising single database), and make follow up questions possible
@@ -77,6 +75,8 @@ def main():
     print("Type 'exit' to quit, '/switch' to change database")
     print("=" * 50)
 
+    last_result = None  # Track previous result for context
+
     while True:
         # Get query
         print()
@@ -104,6 +104,7 @@ def main():
                 if 0 <= index < len(allowed_dbs):
                     database = allowed_dbs[index]
                     print(f"✅ Switched to: {database}")
+                    last_result = None  # Clear context on database switch
                 else:
                     print("❌ Invalid selection")
             except ValueError:
@@ -114,9 +115,22 @@ def main():
         if not query:
             continue
 
+        # Build context from previous result
+        context = None
+        if last_result and last_result.get("success"):
+            context = {
+                "previous_query": last_result.get("query"),
+                "previous_data": last_result.get("analysis", {}).get("data", [])[:10]
+            }
+
         # Run the pipeline
         print("\n" + "-" * 50)
-        result = core.run(user=user, database=database, query=query)
+        result = core.run(user=user, database=database, query=query, context=context)
+
+        # Store for next iteration
+        if result.get("success"):
+            result["query"] = query
+            last_result = result
 
         # Display results
         if not result["success"]:
