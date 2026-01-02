@@ -42,13 +42,21 @@ class Core:
         """Get file path for a database"""
         return self.databases["databases"][database]["path"]
 
-    def run(self, user: str, database: str, query: str) -> dict:
+
+    def get_allowed_databases(self, user: str) -> list: # connect users to allowed databases automatically.
+        """Get list of databases user can access"""
+        if user not in self.users["users"]:
+            return []
+        return self.users["users"][user].get("allowed_databases", [])
+    
+    def run(self, user: str, database: str, query: str) -> dict: 
         """
-        Main orchestration flow:
-        1. Check permissions
+        Core pipeline:
+
+        1. Check permissions (User restrictions)
         2. Run Analysis Agent
         3. Run Visualization Agent
-        4. Return combined results
+        4. Return results
         """
         # Step 1: Check permissions
         if user not in self.users["users"]:
