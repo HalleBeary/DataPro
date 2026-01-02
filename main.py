@@ -43,10 +43,10 @@ def main():
         print(f"\n❌ User '{user}' has no database access")
         return
 
-    # Show databases. Name and description for user convenience
+    # Show databases with descriptions
     print(f"\nAvailable databases for {user}:\n")
     for i, db_name in enumerate(allowed_dbs, 1):
-        description = core.databases["databases"][db_name].get("description", "No description") 
+        description = core.databases["databases"][db_name].get("description", "No description")
         print(f"  [{i}] {db_name}")
         print(f"      {description}\n")
 
@@ -57,7 +57,6 @@ def main():
     else:
         selection = input("Select database [1-{}]: ".format(len(allowed_dbs))).strip()
         
-        # Validate selection
         try:
             index = int(selection) - 1
             if 0 <= index < len(allowed_dbs):
@@ -66,56 +65,86 @@ def main():
                 print(f"\n❌ Invalid selection")
                 return
         except ValueError:
-            # Maybe they typed the name directly
             if selection in allowed_dbs:
                 database = selection
             else:
                 print(f"\n❌ Invalid selection")
                 return
 
-    # Get query
-    query = input("\nWhat would you like to analyze? ").strip()
-
-    if not query:
-        print("\n❌ No query provided")
-        return
-
-    # Run the pipeline
-    print("\n" + "-" * 50)
-    result = core.run(user=user, database=database, query=query)
-
-    # Display results
+    # Main query loop
     print("\n" + "=" * 50)
-    print("RESULTS")
+    print(f"Ready! Using database: {database}")
+    print("Type 'exit' to quit, '/switch' to change database")
     print("=" * 50)
 
-    if not result["success"]:
-        print(f"\n❌ Error: {result['error']}")
-        return
+    while True:
+        # Get query
+        print()
+        query = input("What would you like to analyze? ").strip()
 
-    # Analysis info
-    print(f"\n📊 SQL executed:")
-    print(f"   {result['analysis']['metadata']['sql']}")
-    print(f"\n📋 Rows returned: {result['analysis']['metadata']['row_count']}")
+        # Handle exit
+        if query.lower() in ["exit", "quit", "q"]:
+            print("\nGoodbye! 👋")
+            break
 
-    # Visualization info
-    print(f"\n🎨 Chart saved to: {result['visualization']['path']}")
-    print(f"   Chart type: {result['visualization']['chart_type']}")
+        # Handle database switch
+        if query.lower() == "/switch":
+            if len(allowed_dbs) == 1:
+                print("Only one database available.")
+                continue
+            
+            print()
+            for i, db_name in enumerate(allowed_dbs, 1):
+                description = core.databases["databases"][db_name].get("description", "No description")
+                print(f"  [{i}] {db_name} - {description}")
+            
+            selection = input("\nSelect database [1-{}]: ".format(len(allowed_dbs))).strip()
+            try:
+                index = int(selection) - 1
+                if 0 <= index < len(allowed_dbs):
+                    database = allowed_dbs[index]
+                    print(f"✅ Switched to: {database}")
+                else:
+                    print("❌ Invalid selection")
+            except ValueError:
+                print("❌ Invalid selection")
+            continue
 
-    # Insights
-    if result["visualization"]["insights"]:
-        print(f"\n💡 Insights:")
-        for insight in result["visualization"]["insights"]:
-            print(f"   • {insight}")
+        # Skip empty queries
+        if not query:
+            continue
 
-    # Suggestions
-    if result["visualization"]["suggestions"]:
-        print(f"\n🔍 Suggestions:")
-        for suggestion in result["visualization"]["suggestions"]:
-            print(f"   • {suggestion}")
+        # Run the pipeline
+        print("\n" + "-" * 50)
+        result = core.run(user=user, database=database, query=query)
 
-    print("\n" + "=" * 50)
-    print("Done!")
+        # Display results
+        if not result["success"]:
+            print(f"\n❌ Error: {result['error']}")
+            continue
+
+        # Analysis info
+        print(f"\n📊 SQL executed:")
+        print(f"   {result['analysis']['metadata']['sql']}")
+        print(f"\n📋 Rows returned: {result['analysis']['metadata']['row_count']}")
+
+        # Visualization info
+        print(f"\n🎨 Chart saved to: {result['visualization']['path']}")
+        print(f"   Chart type: {result['visualization']['chart_type']}")
+
+        # Insights
+        if result["visualization"]["insights"]:
+            print(f"\n💡 Insights:")
+            for insight in result["visualization"]["insights"]:
+                print(f"   • {insight}")
+
+        # Suggestions
+        if result["visualization"]["suggestions"]:
+            print(f"\n🔍 Suggestions:")
+            for suggestion in result["visualization"]["suggestions"]:
+                print(f"   • {suggestion}")
+
+        print("\n" + "-" * 50)
 
 
 if __name__ == "__main__":

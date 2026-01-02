@@ -38,10 +38,7 @@ class AnalysisAgent:
         self.client = OpenAI(api_key=api_key)
         self.model = "gpt-4o"
 
-    def run(self, query: str, database_path: str) -> dict:
-        """
-        Main entry point: natural language query → structured data
-        """
+    def run(self, query: str, database_path: str) -> dict: 
         try: 
             # Step 1: Get database schema
             schema = self._get_schema(database_path) # get database structure ("shape") which depends on which database is accessed (Chinook, nortwind or anything)
@@ -73,10 +70,7 @@ class AnalysisAgent:
                 "metadata": {}
             }
 
-    def _get_schema(self, database_path: str) -> str:
-        """
-        Extract schema from SQLite database
-        """
+    def _get_schema(self, database_path: str) -> str: # extract schema from SQL database
         conn = sqlite3.connect(database_path)
         cursor = conn.cursor()
 
@@ -93,13 +87,15 @@ class AnalysisAgent:
 
         conn.close()
         return "\n\n".join(schema_parts)
+    
 
-    def _generate_sql(self, query: str, schema: str) -> str:
-        """
-        Use OpenAI to generate SQL from natural language
-        """
+
+    def _generate_sql(self, query: str, schema: str) -> str: # TODO is agent able to handle multiple questions at once?
+
+
         system_prompt = f"""You are a SQL expert. Generate SQLite-compatible SQL queries.
 
+    # ? Should this method use tools ?
 
     DATABASE SCHEMA:
     {schema}
@@ -139,10 +135,8 @@ class AnalysisAgent:
         
         return sql.strip()
 
-    def _execute_sql(self, database_path: str, sql: str) -> tuple:
-        """
-        Execute SQL and return results + column names
-        """
+    def _execute_sql(self, database_path: str, sql: str) -> tuple: # Executes SQL, returns results and column names
+
         conn = sqlite3.connect(database_path)
         cursor = conn.cursor()
         cursor.execute(sql)

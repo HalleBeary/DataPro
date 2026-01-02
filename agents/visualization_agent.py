@@ -33,6 +33,7 @@ from styles.company_style import COMPANY_STYLE
 
 """
 
+# TODO upgrade to plotly
 
 class VisualizationAgent:
     def __init__(self, api_key: str = None, style: dict = None):
@@ -45,9 +46,6 @@ class VisualizationAgent:
         os.makedirs(self.output_dir, exist_ok=True)
 
     def run(self, data: list, metadata: dict, user_query: str = "") -> dict:
-        """
-        Main entry point: data → analysis → styled chart
-        """
         try:
             # Step 1: AI analyzes data and decides visualization
             decisions = self._analyze_data(data, metadata, user_query)
@@ -121,9 +119,6 @@ class VisualizationAgent:
         )
 
     def _create_chart(self, data: list, metadata: dict, decisions: dict) -> str:
-        """
-        Create the actual chart using matplotlib
-        """
         chart_type = decisions.get("chart_type", "bar")
         title = decisions.get("title", "Chart")
         x_col = decisions.get("x_column", metadata["columns"][0])
