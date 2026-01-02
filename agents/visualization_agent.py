@@ -3,6 +3,8 @@ import json
 from datetime import datetime
 from openai import OpenAI
 import matplotlib.pyplot as plt
+from styles.company_style import COMPANY_STYLE
+
 
 """
 ┌─────────────────────────────────────────────────────────────┐
@@ -29,7 +31,6 @@ import matplotlib.pyplot as plt
 │  }                                                          │
 └─────────────────────────────────────────────────────────────┘
 
-              📊 Chart saved!
 """
 
 
@@ -37,22 +38,11 @@ class VisualizationAgent:
     def __init__(self, api_key: str = None, style: dict = None):
         self.client = OpenAI(api_key=api_key)
         self.model = "gpt-4o"
-        self.style = style or self._default_style()
+        self.style = style or COMPANY_STYLE
         self.output_dir = "output"
         
-        # Ensure output directory exists
+        # Create output directory
         os.makedirs(self.output_dir, exist_ok=True)
-
-    def _default_style(self) -> dict:
-        """Default company style - can be overridden"""
-        return {
-            "colors": ["#1E88E5", "#FFC107", "#4CAF50", "#E91E63", "#9C27B0"],
-            "font_family": "sans-serif",
-            "title_size": 14,
-            "label_size": 10,
-            "background_color": "#FFFFFF",
-            "grid": True
-        }
 
     def run(self, data: list, metadata: dict, user_query: str = "") -> dict:
         """
@@ -87,10 +77,22 @@ class VisualizationAgent:
             }
 
     def _analyze_data(self, data: list, metadata: dict, user_query: str) -> dict:
-        """
-        AI decides how to visualize the data
-        """
-        prompt = f"""Analyze this data for visualization.
+
+        system_prompt = """You are a data visualization expert. 
+    Your job is to analyze data and decide the best way to visualize it.
+
+    RULES:
+    - Return ONLY valid JSON, no explanations
+    - Choose chart_type based on data shape and query intent
+    - Bar: comparisons, rankings, categories
+    - Line: trends over time
+    - Pie: parts of a whole (use only if <7 categories)
+    - Scatter: relationships between two numeric columns
+    - Provide 1-2 concise insights about the data
+    - Suggest 1 relevant follow-up analysis
+    """
+
+        user_prompt = f"""Analyze this data for visualization.
 
     USER QUERY: {user_query}
 
@@ -98,39 +100,25 @@ class VisualizationAgent:
 
     METADATA: {json.dumps(metadata, indent=2)}
 
-    Respond with JSON only:
+    Respond with JSON:
     {{
         "chart_type": "bar" | "line" | "pie" | "scatter",
         "title": "descriptive chart title",
         "x_column": "column name for x-axis",
         "y_column": "column name for y-axis",
-        "highlights": ["indices of data points to emphasize (0-based)"],
-        "insights": ["1-2 key insights about the data"],
-        "suggestions": ["1 follow-up analysis the user might want"]
-    }}
-
-    RULES:
-    - Choose chart_type based on data shape and query intent
-    - Bar: comparisons, rankings, categories
-    - Line: trends over time
-    - Pie: parts of a whole (use only if <7 categories)
-    - Scatter: relationships between two numeric columns
-    """
+        "highlights": [indices to emphasize],
+        "insights": ["1-2 key insights"],
+        "suggestions": ["1 follow-up analysis"]
+    }}"""
 
         response = self.client.chat.completions.create(
             model=self.model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
             temperature=0
         )
-
-        content = response.choices[0].message.content.strip()
-        
-        # Clean up if wrapped in markdown
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1]
-            content = content.rsplit("```", 1)[0]
-
-        return json.loads(content)
 
     def _create_chart(self, data: list, metadata: dict, decisions: dict) -> str:
         """
