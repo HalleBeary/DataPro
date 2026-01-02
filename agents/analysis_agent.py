@@ -31,6 +31,8 @@ USER QUERY: "Show me top 5 genres by track count"
 
 # TODO IMRPOVEMENT COULD BE USING REACT LOOP ??
 
+# TODO Improve error handling 
+
 class AnalysisAgent:
     def __init__(self, api_key: str = None):
         self.client = OpenAI(api_key=api_key)

@@ -72,11 +72,11 @@ class Core:
                 "error": f"Unknown database: '{database}'"
             }
         
-        db_path = self.get_database_path(database)
+        db_path = self.get_database_path(database) 
 
-        # Step 3: Run Analysis Agent
+        # Step 3: Run Analysis Agent takes in query and database as arguments
         print(f"🔍 Analyzing: {query}")
-        analysis_result = self.analysis_agent.run(
+        analysis_result = self.analysis_agent.run(  # Output dictionary 
             query=query,
             database_path=db_path
         )
@@ -89,7 +89,7 @@ class Core:
             }
 
         # Step 4: Run Visualization Agent
-        print(f"📊 Generating visualization...")
+        print(f"📊 Generating visualization...") 
         viz_result = self.visualization_agent.run(
             data=analysis_result["data"],
             metadata=analysis_result["metadata"],
