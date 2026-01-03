@@ -144,8 +144,11 @@ def main():
         print(f"\n📋 Rows returned: {result['analysis']['metadata']['row_count']}")
 
         # Visualization info
-        print(f"\n🎨 Chart saved to: {result['visualization']['path']}")
-        print(f"   Chart type: {result['visualization']['chart_type']}")
+        if result["visualization"]["path"]:
+            print(f"\n🎨 Chart saved to: {result['visualization']['path']}")
+            print(f"   Chart type: {result['visualization']['chart_type']}")
+        else:
+            print(f"\n📭 No chart generated (no data found)")
 
         # Insights
         if result["visualization"]["insights"]:

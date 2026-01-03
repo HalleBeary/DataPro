@@ -159,6 +159,9 @@ RULES:
 - Use clear column aliases for aggregations
 - For time-based trends, prefer yearly aggregations unless user asks specifically for montly/daily
 - If the user refers to previous results, use the context to understand what they mean
+- IMPORTANT: Always wrap table and column names in double quotes (e.g., "Order", "Order Details") to handle reserved keywords and spaces
+- When user asks to "show all" or "list all", include a meaningful metric (count, sum, etc.)
+- Don't just return IDs - return useful aggregations
 """
     
 # Rules why?

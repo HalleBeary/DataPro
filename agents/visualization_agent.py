@@ -105,6 +105,16 @@ class VisualizationAgent:
         Main entry point: data → analysis → styled chart
         """
         try:
+            # Handle empty data
+            if not data or len(data) == 0:
+                return {
+                    "success": True,
+                    "path": None,
+                    "chart_type": None,
+                    "insights": ["No data found matching your query."],
+                    "suggestions": ["Try broadening your search criteria or check for typos."]
+                }
+
             # Step 1: AI analyzes data and decides visualization
             decisions = self._analyze_data(data, metadata, user_query)
 
