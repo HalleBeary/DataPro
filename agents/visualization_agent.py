@@ -285,8 +285,8 @@ ROW COUNT: {metadata.get('row_count', len(data))}
 
             # === AXIS STYLING (skip for pie) ===
             if chart_type != "pie":
-                ax.set_xlabel(x_col, fontsize=style["label_size"], color=style.get("axis_color", style["text_color"]))
-                ax.set_ylabel(y_col, fontsize=style["label_size"], color=style.get("axis_color", style["text_color"]))
+                ax.set_xlabel(self._format_label(x_col), fontsize=style["label_size"], color=style.get("axis_color", style["text_color"]))
+                ax.set_ylabel(self._format_label(y_col), fontsize=style["label_size"], color=style.get("axis_color", style["text_color"]))
                 ax.tick_params(colors=style.get("axis_color", style["text_color"]), labelsize=style["tick_size"])
 
                 if style.get("grid", True):
@@ -411,3 +411,23 @@ ROW COUNT: {metadata.get('row_count', len(data))}
         ax.tick_params(axis='x', rotation=45)
         for label in ax.get_xticklabels():
             label.set_horizontalalignment('right')
+
+    def _format_label(self, column_name: str) -> str:
+        """
+        Convert column names to readable labels
+        'ProductName' → 'Product Name'
+        'TotalQuantitySold' → 'Total Quantity Sold'
+        'total_sales' → 'Total Sales'
+        """
+        import re
+        
+        # Handle camelCase and PascalCase: 'ProductName' → 'Product Name'
+        label = re.sub(r'([a-z])([A-Z])', r'\1 \2', column_name)
+        
+        # Handle snake_case: 'total_sales' → 'Total Sales'
+        label = label.replace('_', ' ')
+        
+        # Capitalize each word
+        label = label.title()
+        
+        return label
