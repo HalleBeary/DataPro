@@ -70,39 +70,63 @@ class AnalysisAgent:
 
     def run(self, query: str, database_path: str, context: dict = None) -> dict:
         """
-        Main entry point: natural language query → structured data
+        Main entry point with built-in SQL self-correction loop.
         """
         try:
             # Step 1: Get database schema
             schema = self._get_schema(database_path)
+            
+            current_query = query
+            sql = None
+            explanation = None
+            last_error = None
+            
+            # Step 2: Generation and Correction Loop to handle syntax errors
+            for attempt in range(self.max_retries):
+                # If this is a retry, modify the prompt to include the error
+                if last_error:
+                    correction_prompt = (
+                        f"Your previous SQL query failed with this error: {last_error}\n"
+                        f"Original user request: {query}\n"
+                        f"Previous SQL: {sql}\n"
+                        f"Please fix the SQL and provide a valid SQLite query."
+                    )
+                    sql, explanation = self._generate_sql(correction_prompt, schema, context)
+                else:
+                    sql, explanation = self._generate_sql(current_query, schema, context)
 
-            # Step 2: Generate SQL using function calling
-            sql, explanation = self._generate_sql(query, schema, context)
+                # Step 3: Execute SQL and check for errors
+                try:
+                    results, columns = self._execute_sql(database_path, sql)
+                    
+                    # If execution succeeds, break the loop and format data
+                    data = [dict(zip(columns, row)) for row in results]
+                    return {
+                        "success": True,
+                        "data": data,
+                        "metadata": {
+                            "columns": columns,
+                            "row_count": len(data),
+                            "sql": sql,
+                            "explanation": explanation,
+                            "attempts": attempt + 1
+                        }
+                    }
+                except Exception as e:
+                    print(f"⚠️ Attempt {attempt + 1} failed: {str(e)}")
+                    last_error = str(e)
+                    
 
-            # Step 3: Execute SQL
-            results, columns = self._execute_sql(database_path, sql)
-
-            # Step 4: Structure output
-            data = [dict(zip(columns, row)) for row in results]
-
+            # If all retries fail
             return {
-                "success": True,
-                "data": data,
-                "metadata": {
-                    "columns": columns,
-                    "row_count": len(data),
-                    "sql": sql,
-                    "explanation": explanation
-                }
+                "success": False,
+                "error": f"Failed after {self.max_retries} attempts. Last error: {last_error}",
+                "data": [],
+                "metadata": {"sql": sql}
             }
 
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "data": [],
-                "metadata": {}
-            }
+            return {"success": False, "error": str(e), "data": [], "metadata": {}}
 
     def _get_schema(self, database_path: str) -> str:
         """
@@ -143,7 +167,6 @@ PREVIOUS RESULTS (first 10 rows): {context.get('previous_data', [])}{suggestions
 Use this context to understand references like "these", "those", "the same", "that suggestion", etc.
 If user says "follow that suggestion" or similar, use the PREVIOUS SUGGESTIONS to determine what to do.
 """
-
         system_prompt = f"""You are a SQL expert. Generate SQLite-compatible SQL queries based on user questions.
 
 DATABASE SCHEMA:
@@ -152,28 +175,30 @@ DATABASE SCHEMA:
 {context_str}
 
 RULES:
-- Use the execute_sql function to run your query
-- Use SQLite syntax only
-- Always limit results to 100 rows max unless user specifies otherwise
-- Use appropriate JOINs when data spans multiple tables
-- Use clear column aliases for aggregations
-- For time-based trends, prefer yearly aggregations unless user asks specifically for montly/daily
-- If the user refers to previous results, use the context to understand what they mean
-- IMPORTANT: Always wrap table and column names in double quotes (e.g., "Order", "Order Details") to handle reserved keywords and spaces
-- When user asks to "show all" or "list all", include a meaningful metric (count, sum, etc.)
-- Don't just return IDs - return useful aggregations
+SQLITE SPECIFIC RULES:
+
+- Double-Quote Identifiers: Always wrap table and column names in double quotes (e.g., "Order", "Group") to avoid conflicts with SQLite reserved keywords.
+
+- Zero-Handling: Use COALESCE(column, 0) for any numeric aggregations (SUM, AVG) to ensure the visualization doesn't break on NULL values.
+
+- Floating Point Division: When calculating ratios or percentages, use CAST(column AS FLOAT) to avoid integer division (which returns 0 in SQLite for results < 1).
+
+- Date Handling: Use strftime('%Y-%m', column) for monthly trends or strftime('%Y', column) for yearly trends.
+
+- If a column is not in the provided schema, do not guess it. Only use the columns listed
+
+- use DISTINCT when counting entities that might have multiple entries (e.g., COUNT(DISTINCT ArtistId))
+
+DATA QUALITY RULES:
+
+- Meaningful Aliases: Use descriptive aliases for aggregated columns (e.g., COUNT(*) AS "Total Tracks") as these will become labels in the final chart.
+
+- Limit Results: Always apply LIMIT 100 unless specifically asked for more. For "Top X" queries, use ORDER BY ... DESC LIMIT X.
+
+- No Naked IDs: Never return just an ID (like GenreId). Always JOIN the descriptive table to get the name (like Name)
+
+Rounding Rule: "Always round numeric aggregations (SUM, AVG) to 2 decimal places using ROUND(expression, 2). This ensures clean data for display."
 """
-    
-# Rules why?
-
-  #  RULES:
-  #  - Return ONLY the SQL query, no explanations ----> No text around SQL query, else you need to get rid of "here is the query or other shit"
-  #  - Use SQLite syntax ----> #Different from MySQL/PostgreSQL. Avoids incompatibility issues
-  #  - Always limit results to 100 rows max unless user specifies ----> Safety, prevents returning millions rows by accident for example
-  #  - Use appropriate JOINs when needed ---->   Encourages proper relational queries instead of lazy single-table selects
-
-  # TODO How can this rule list be improved? 
-
 
         for attempt in range(self.max_retries):
             try:
@@ -228,7 +253,7 @@ RULES:
 
     def _execute_sql(self, database_path: str, sql: str) -> tuple: # returns output and column names
 
-        conn = sqlite3.connect(database_path)
+        conn = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True) # Read only mode
         cursor = conn.cursor()
 
         try:
