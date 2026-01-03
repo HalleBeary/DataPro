@@ -18,3 +18,11 @@ This project contains a two-agent system, that work in tandem to analyze and vis
 - Visualization agent (agent/visaualization_agent.py): Takes SQL data from Data Analysis agent and generates a relevant visualization, appropriate for the retrieved data. It can generate line, bar, pie and scatter plots. Next to a visualization, a suggestion is made on what to analyze next.
 
 
+### Example Queries
+
+| Query | What It Does |
+|-------|--------------|
+| "Top 10 artists by sales" | Bar chart of best-selling artists |
+| "Monthly sales trends for 2012" | Line chart over time |
+| "Distribution of tracks by media type" | Pie chart |
+| "Top 5 customers in Germany by spending" | Filtered bar chart |
