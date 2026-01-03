@@ -44,72 +44,50 @@ class Core:
         return self.users["users"][user].get("allowed_databases", [])
     
     def run(self, user: str, database: str, query: str, context: dict = None) -> dict:
-        """
-        Main orchestration flow:
-        1. Check permissions
-        2. Run Analysis Agent
-        3. Run Visualization Agent
-        4. Return combined results
-        """
-        # Step 1: Check permissions
-        if user not in self.users["users"]:
+            """
+            Main orchestration flow:
+            1. Check permissions
+            2. Run Analysis Agent
+            3. Run Visualization Agent
+            4. Return combined results
+            """
+            # Step 1 & 2: Permissions and Path (Keep your existing logic)
+            if user not in self.users["users"]:
+                return {"success": False, "error": f"Unknown user: '{user}'"}
+            if not self.check_access(user, database):
+                return {"success": False, "error": f"Access denied: '{user}'"}
+            
+            db_path = self.get_database_path(database)
+
+            # Step 3: Run Analysis Agent (ReAct Loop)
+            print(f"🔍 Analyzing with ReAct loop: {query}")
+            analysis_result = self.analysis_agent.run(
+                query=query,
+                database_path=db_path,
+                context=context
+            )
+
+            if not analysis_result["success"]:
+                return {
+                    "success": False,
+                    "error": f"Analysis failed: {analysis_result.get('error')}",
+                    "analysis": analysis_result
+                }
+
+            # Step 4: Run Visualization Agent (Plotly)
+            print(f"📊 Generating Plotly visualization...")
+            viz_result = self.visualization_agent.run(
+                data=analysis_result["data"],
+                metadata=analysis_result["metadata"],
+                user_query=query
+            )
+
+            # Step 5: Return combined results
             return {
-                "success": False,
-                "error": f"Unknown user: '{user}'"
+                "success": True,
+                "user": user,
+                "database": database,
+                "query": query,
+                "analysis": analysis_result, # Contains SQL, data, explanation
+                "visualization": viz_result   # Contains html_path, png_path, insights
             }
-
-        if not self.check_access(user, database):
-            return {
-                "success": False,
-                "error": f"Access denied: '{user}' cannot access '{database}'"
-            }
-
-        # Step 2: Get database path
-        if database not in self.databases["databases"]:
-            return {
-                "success": False,
-                "error": f"Unknown database: '{database}'"
-            }
-        
-        db_path = self.get_database_path(database)
-
-        # Step 3: Run Analysis Agent (with context)
-        print(f"🔍 Analyzing: {query}")
-        analysis_result = self.analysis_agent.run(
-            query=query,
-            database_path=db_path,
-            context=context
-        )
-
-        if not analysis_result["success"]:
-            return {
-                "success": False,
-                "error": f"Analysis failed: {analysis_result.get('error', 'Unknown error')}",
-                "analysis": analysis_result
-            }
-
-        # Step 4: Run Visualization Agent
-        print(f"📊 Generating visualization...")
-        viz_result = self.visualization_agent.run(
-            data=analysis_result["data"],
-            metadata=analysis_result["metadata"],
-            user_query=query
-        )
-
-        if not viz_result["success"]:
-            return {
-                "success": False,
-                "error": f"Visualization failed: {viz_result.get('error', 'Unknown error')}",
-                "analysis": analysis_result,
-                "visualization": viz_result
-            }
-
-        # Step 5: Return combined results
-        return {
-            "success": True,
-            "user": user,
-            "database": database,
-            "query": query,
-            "analysis": analysis_result,
-            "visualization": viz_result
-        }

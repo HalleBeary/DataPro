@@ -1,16 +1,9 @@
 import os
 import json
-import time
+import plotly.graph_objects as go
+import plotly.io as pio
 from datetime import datetime
-from openai import (
-    OpenAI,
-    AuthenticationError,
-    RateLimitError,
-    APIConnectionError,
-    BadRequestError,
-    APIError
-)
-import matplotlib.pyplot as plt
+from openai import OpenAI
 from styles.company_style import COMPANY_STYLE
 """
 ┌─────────────────────────────────────────────────────────────┐
@@ -39,373 +32,127 @@ from styles.company_style import COMPANY_STYLE
 
 """
 
-# TODO upgrade to plotly?
-
-
 class VisualizationAgent:
     def __init__(self, api_key: str = None, style: dict = None):
         self.client = OpenAI(api_key=api_key)
         self.model = "gpt-4o"
-        self.max_retries = 3
         self.style = style or COMPANY_STYLE
         self.output_dir = "output"
-
-        # Ensure output directory exists
         os.makedirs(self.output_dir, exist_ok=True)
 
-        # Define the tool for chart creation
-        self.tools = [{
+    def run(self, data: list, metadata: dict, user_query: str = "") -> dict:
+        """
+        Refactored: Data + Query -> Plotly JSON Spec -> Interactive Figure
+        """
+        try:
+            if not data:
+                return {"success": True, "path": None, "insights": ["No data found."]}
+
+            # STEP 1: AI generates the Plotly Specification
+            spec = self._generate_chart_spec(data, metadata, user_query)
+
+            # STEP 2: Build the Plotly Figure from the Spec
+            fig = self._build_figure(data, spec)
+
+            # STEP 3: Save as Interactive HTML and Static Image
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            html_path = os.path.join(self.output_dir, f"chart_{timestamp}.html")
+            png_path = os.path.join(self.output_dir, f"chart_{timestamp}.png")
+            
+            fig.write_html(html_path)
+            # Note: png requires 'kaleido' package
+            try:
+                fig.write_image(png_path, engine="kaleido")
+            except:
+                png_path = None # Fallback if kaleido isn't installed
+
+            return {
+                "success": True,
+                "html_path": html_path,
+                "png_path": png_path,
+                "insights": spec.get("insights", []),
+                "suggestions": spec.get("suggestions", [])
+            }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _generate_chart_spec(self, data: list, metadata: dict, user_query: str) -> dict:
+        """AI decides exactly how the chart should look via Tool Calling."""
+        tools = [{
             "type": "function",
             "function": {
-                "name": "create_chart",
-                "description": "Create a chart visualization based on the data analysis",
+                "name": "render_chart",
+                "description": "Render a Plotly chart",
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "chart_type": {
-                            "type": "string",
-                            "enum": ["bar", "line", "pie", "scatter"],
-                            "description": "Type of chart to create"
-                        },
-                        "title": {
-                            "type": "string",
-                            "description": "Descriptive title for the chart"
-                        },
-                        "x_column": {
-                            "type": "string",
-                            "description": "Column name to use for x-axis"
-                        },
-                        "y_column": {
-                            "type": "string",
-                            "description": "Column name to use for y-axis"
-                        },
-                        "highlights": {
-                            "type": "array",
-                            "items": {"type": "integer"},
-                            "description": "Indices of data points to highlight (0-based)"
-                        },
-                        "insights": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "1-2 key insights about the data"
-                        },
-                        "suggestions": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "1 follow-up analysis suggestion"
-                        }
+                        "chart_type": {"type": "string", "enum": ["bar", "line", "scatter", "pie", "heatmap"]},
+                        "title": {"type": "string"},
+                        "x_axis": {"type": "string", "description": "Column name for X"},
+                        "y_axis": {"type": "string", "description": "Column name for Y"},
+                        "color_by": {"type": "string", "description": "Column name to differentiate colors/series"},
+                        "insights": {"type": "array", "items": {"type": "string"}},
+                        "suggestions": {"type": "array", "items": {"type": "string"}}
                     },
-                    "required": ["chart_type", "title", "x_column", "y_column"]
+                    "required": ["chart_type", "title", "x_axis", "y_axis"]
                 }
             }
         }]
 
-    def run(self, data: list, metadata: dict, user_query: str = "") -> dict:
-        """
-        Main entry point: data → analysis → styled chart
-        """
-        try:
-            # Handle empty data
-            if not data or len(data) == 0:
-                return {
-                    "success": True,
-                    "path": None,
-                    "chart_type": None,
-                    "insights": ["No data found matching your query."],
-                    "suggestions": ["Try broadening your search criteria or check for typos."]
-                }
+        prompt = f"""Analyze this data and design a Plotly visualization.
+QUERY: {user_query}
+COLUMNS: {metadata['columns']}
+SAMPLE DATA: {json.dumps(data[:5])}
 
-            # Step 1: AI analyzes data and decides visualization
-            decisions = self._analyze_data(data, metadata, user_query)
-
-            # Step 2: Create chart with AI-driven decisions
-            chart_path = self._create_chart(
-                data=data,
-                metadata=metadata,
-                decisions=decisions
-            )
-
-            return {
-                "success": True,
-                "path": chart_path,
-                "chart_type": decisions.get("chart_type", "bar"),
-                "insights": decisions.get("insights", []),
-                "suggestions": decisions.get("suggestions", [])
-            }
-
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "path": None,
-                "insights": [],
-                "suggestions": []
-            }
-
-    def _analyze_data(self, data: list, metadata: dict, user_query: str) -> dict:
-        """
-        AI decides how to visualize the data using function calling
-        """
-        system_prompt = """You are a data visualization expert.
-Your job is to analyze data and decide the best way to visualize it.
-
-RULES:
-- Use the create_chart function to specify your visualization
-- Choose chart_type based on data shape and query intent:
-  - bar: comparisons, rankings, categories
-  - line: trends over time
-  - pie: parts of a whole (only if <7 categories)
-  - scatter: relationships between two numeric columns
-- Provide 1-2 concise, insightful observations about the data
-- Suggest 1 relevant follow-up analysis
-- Make suggestions specific and actionable (include filters, time period, metrics)
-- Highlight the most important data point (usually index 0 for rankings)
+Design a chart that best answers the query. If 'color_by' is provided, create multiple series.
 """
-
-        user_prompt = f"""Analyze this data and create a visualization.
-
-USER QUERY: {user_query}
-
-DATA (first 10 rows): {json.dumps(data[:10], indent=2)}
-
-COLUMNS: {metadata.get('columns', [])}
-ROW COUNT: {metadata.get('row_count', len(data))}
-"""
-
-        for attempt in range(self.max_retries):
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    tools=self.tools,
-                    tool_choice="auto", #{"type": "function", "function": {"name": "create_chart"}},
-                    temperature=0
-                )
-
-                # Extract function call
-                tool_call = response.choices[0].message.tool_calls[0]
-                decisions = json.loads(tool_call.function.arguments)
-
-                return decisions
-
-            except AuthenticationError:
-                raise Exception("Invalid API key. Please check your OPENAI_API_KEY.")
-
-            except RateLimitError:
-                if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt
-                    print(f"⏳ Rate limited. Waiting {wait_time}s...")
-                    time.sleep(wait_time)
-                else:
-                    raise Exception("Rate limit exceeded. Please try again later.")
-
-            except APIConnectionError:
-                if attempt < self.max_retries - 1:
-                    print("🔄 Connection error. Retrying...")
-                    time.sleep(1)
-                else:
-                    raise Exception("Could not connect to OpenAI. Check your internet.")
-
-            except BadRequestError as e:
-                raise Exception(f"Invalid request: {str(e)}")
-
-            except APIError as e:
-                if attempt < self.max_retries - 1:
-                    print("🔄 OpenAI server error. Retrying...")
-                    time.sleep(1)
-                else:
-                    raise Exception(f"OpenAI error: {str(e)}")
-
-    def _create_chart(self, data: list, metadata: dict, decisions: dict) -> str:
-        """
-        Create the actual chart using matplotlib
-        """
-        chart_type = decisions.get("chart_type", "bar")
-        title = decisions.get("title", "Chart")
-        x_col = decisions.get("x_column", metadata["columns"][0])
-        y_col = decisions.get("y_column", metadata["columns"][-1])
-        highlights = decisions.get("highlights", [0])
-
-        # Extract data
-        x_values = [row.get(x_col, "") for row in data]
-        y_values = [row.get(y_col, 0) for row in data]
-
-        style = self.style
-
-        # Create figure
-        fig, ax = plt.subplots(figsize=style["figure_size"])
-        fig.patch.set_facecolor(style["background_color"])
-        ax.set_facecolor(style["background_color"])
-
-        # Draw chart based on type
-        if chart_type == "bar":
-            # Create colors (highlight specific bars)
-            colors = []
-            for i in range(len(data)):
-                if i in highlights:
-                    colors.append(style["colors"][0])
-                else:
-                    colors.append(style["colors"][1])
-
-            bars = ax.bar(x_values, y_values, color=colors, edgecolor="white", linewidth=0.5)
-            plt.xticks(rotation=45, ha="right")
-
-            # Add value labels
-            for bar, val in zip(bars, y_values):
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    bar.get_height() + (max(y_values) * 0.02),
-                    f"{val:,}" if isinstance(val, (int, float)) else str(val),
-                    ha="center",
-                    va="bottom",
-                    color=style["text_color"],
-                    fontsize=9,
-                    fontweight="bold"
-                )
-
-        elif chart_type == "line":
-                    # Check if data has multiple series (repeating x-values)
-                    unique_x = len(set(x_values))
-                    has_multiple_series = unique_x < len(x_values)
-
-                    if has_multiple_series:
-                        # Find grouping column (not x or y)
-                        other_cols = [c for c in metadata.get("columns", []) if c != x_col and c != y_col]
-
-                        if other_cols:
-                            group_col = other_cols[0]
-
-                            # Group data by the grouping column
-                            groups = {}
-                            for row in data:
-                                group = row.get(group_col, "Unknown")
-                                if group not in groups:
-                                    groups[group] = []
-                                groups[group].append({
-                                    "x": row.get(x_col, ""),
-                                    "y": row.get(y_col, 0)
-                                })
-
-                            # Get all unique x-values and sort them properly
-                            all_x = sorted(set(x_values), key=lambda d: (d[:4], d[5:7] if len(d) >= 7 else "00"))
-                            x_to_idx = {x: i for i, x in enumerate(all_x)}
-
-                            # Plot each group as separate line
-                            for i, (group_name, points) in enumerate(groups.items()):
-                                # Sort points by x value
-                                sorted_points = sorted(points, key=lambda p: (p["x"][:4], p["x"][5:7] if len(p["x"]) >= 7 else "00"))
-                                
-                                # Use numeric positions
-                                plot_x = [x_to_idx[p["x"]] for p in sorted_points]
-                                plot_y = [p["y"] for p in sorted_points]
-
-                                color = style["colors"][i % len(style["colors"])]
-                                ax.plot(
-                                    plot_x, 
-                                    plot_y, 
-                                    color=color, 
-                                    marker="o", 
-                                    linewidth=2.5,
-                                    label=str(group_name),
-                                    markersize=6,
-                                    alpha=0.85
-                                )
-
-                            # Set x-ticks - show fewer labels if too many
-                            num_ticks = len(all_x)
-                            if num_ticks > 10:
-                                # Show every nth label
-                                step = max(1, num_ticks // 8)
-                                tick_positions = list(range(0, num_ticks, step))
-                                tick_labels = [all_x[i] for i in tick_positions]
-                                ax.set_xticks(tick_positions)
-                                ax.set_xticklabels(tick_labels)
-                            else:
-                                ax.set_xticks(range(num_ticks))
-                                ax.set_xticklabels(all_x)
-
-                            # Legend outside plot area
-                            ax.legend(
-                                loc="upper left",
-                                bbox_to_anchor=(1.02, 1),
-                                fontsize=style["tick_size"],
-                                frameon=True,
-                                fancybox=True,
-                                shadow=False,
-                                borderpad=1
-                            )
-                            
-                            # Adjust figure to make room for legend
-                            plt.subplots_adjust(right=0.75)
-                            
-                        else:
-                            # No grouping column - sort and plot single line
-                            sorted_pairs = sorted(zip(x_values, y_values), key=lambda p: (p[0][:4], p[0][5:7] if len(p[0]) >= 7 else "00"))
-                            sorted_x = [p[0] for p in sorted_pairs]
-                            sorted_y = [p[1] for p in sorted_pairs]
-                            ax.plot(sorted_x, sorted_y, color=style["colors"][0], marker="o", linewidth=2.5)
-                    else:
-                        # Single series - sort and plot
-                        sorted_pairs = sorted(zip(x_values, y_values), key=lambda p: (p[0][:4], p[0][5:7] if len(p[0]) >= 7 else "00"))
-                        sorted_x = [p[0] for p in sorted_pairs]
-                        sorted_y = [p[1] for p in sorted_pairs]
-                        ax.plot(sorted_x, sorted_y, color=style["colors"][0], marker="o", linewidth=2.5, markersize=6)
-
-                    plt.xticks(rotation=45, ha="right")
-
-        elif chart_type == "pie":
-            ax.pie(
-                y_values,
-                labels=x_values,
-                colors=style["colors"][:len(data)],
-                autopct="%1.1f%%",
-                startangle=90
-            )
-
-        elif chart_type == "scatter":
-            ax.scatter(x_values, y_values, color=style["colors"][0], s=100)
-            plt.xticks(rotation=45, ha="right")
-
-        # Styling
-        ax.set_title(
-            title,
-            fontsize=style["title_size"],
-            fontweight="bold",
-            color=style["text_color"],
-            pad=20
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            tools=tools,
+            tool_choice={"type": "function", "function": {"name": "render_chart"}}
         )
+        
+        return json.loads(response.choices[0].message.tool_calls[0].function.arguments)
 
-        if chart_type != "pie":
-            ax.set_xlabel(x_col, fontsize=style["label_size"], color=style.get("axis_color", style["text_color"]))
-            ax.set_ylabel(y_col, fontsize=style["label_size"], color=style.get("axis_color", style["text_color"]))
-            ax.tick_params(colors=style.get("axis_color", style["text_color"]), labelsize=style["tick_size"])
+    def _build_figure(self, data: list, spec: dict) -> go.Figure:
+        """Translates the AI Spec and Company Style into a real Plotly Object."""
+        fig = go.Figure()
+        chart_type = spec['chart_type']
+        x_col, y_col = spec['x_axis'], spec['y_axis']
+        color_col = spec.get('color_by')
 
-            # Grid
-            if style.get("grid", True):
-                ax.yaxis.grid(True, color=style.get("grid_color", "#E0E0E0"), alpha=style.get("grid_alpha", 0.5), linestyle="--")
-                ax.set_axisbelow(True)
+        # Extract values
+        if color_col:
+            # Multi-series logic
+            groups = {}
+            for row in data:
+                g = row.get(color_col, "Total")
+                if g not in groups: groups[g] = {'x': [], 'y': []}
+                groups[g]['x'].append(row.get(x_col))
+                groups[g]['y'].append(row.get(y_col))
+            
+            for i, (name, val) in enumerate(groups.items()):
+                color = self.style['colors'][i % len(self.style['colors'])]
+                if chart_type == "bar":
+                    fig.add_trace(go.Bar(x=val['x'], y=val['y'], name=str(name), marker_color=color))
+                else:
+                    fig.add_trace(go.Scatter(x=val['x'], y=val['y'], name=str(name), mode='lines+markers', line=dict(color=color)))
+        else:
+            # Single series logic
+            x_vals = [r.get(x_col) for r in data]
+            y_vals = [r.get(y_col) for r in data]
+            fig.add_trace(go.Bar(x=x_vals, y=y_vals, marker_color=self.style['colors'][0]) if chart_type == "bar" 
+                          else go.Scatter(x=x_vals, y=y_vals, mode='lines+markers', line=dict(color=self.style['colors'][0])))
 
-            # Clean up spines
-            ax.spines["top"].set_visible(False)
-            ax.spines["right"].set_visible(False)
-            ax.spines["bottom"].set_color(style.get("grid_color", "#E0E0E0"))
-            ax.spines["left"].set_color(style.get("grid_color", "#E0E0E0"))
-
-        plt.tight_layout()
-
-        # Save
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"chart_{timestamp}.png"
-        filepath = os.path.join(self.output_dir, filename)
-        plt.savefig(
-            filepath,
-            dpi=style["dpi"],
-            bbox_inches="tight",
-            facecolor=style["background_color"]
+        # Apply Global Company Styling
+        fig.update_layout(
+            title=spec['title'],
+            template="plotly_white",
+            paper_bgcolor=self.style.get('background_color', '#FFFFFF'),
+            plot_bgcolor=self.style.get('background_color', '#FFFFFF'),
+            font=dict(family=self.style.get('font_family', 'Arial'), color=self.style.get('text_color', '#000000')),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
-        plt.close()
-
-        return filepath
+        return fig

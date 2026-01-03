@@ -1,21 +1,15 @@
 import os
+import webbrowser # Added to open charts automatically
 from dotenv import load_dotenv
 from core.core import Core
 
-# Currently CLI
-
-# TODO Make possible to take in multiple questions at once (comprising single database), and make follow up questions possible
-
 def main():
-    # Load API key
     load_dotenv()
     api_key = os.getenv("OPENAI_API_KEY")
-    
     if not api_key:
-        print("❌ Error: OPENAI_API_KEY not found in .env file")
+        print("❌ Error: OPENAI_API_KEY not found")
         return
 
-    # Initialize core
     core = Core(api_key=api_key)
 
     # Header
@@ -75,16 +69,13 @@ def main():
     print("Type 'exit' to quit, '/switch' to change database")
     print("=" * 50)
 
-    last_result = None  # Track previous result for context
+    last_result = None 
 
     while True:
-        # Get query
         print()
         query = input("What would you like to analyze? ").strip()
 
-        # Handle exit
         if query.lower() in ["exit", "quit", "q"]:
-            print("\nGoodbye! 👋")
             break
 
         # Handle database switch
@@ -121,49 +112,39 @@ def main():
             context = {
                 "previous_query": last_result.get("query"),
                 "previous_data": last_result.get("analysis", {}).get("data", [])[:10],
-                "previous_suggestions": last_result.get("visualization", {}).get("suggestions", []) # include suggestion
+                "previous_suggestions": last_result.get("visualization", {}).get("suggestions", [])
             }
 
-        # Run the pipeline
         print("\n" + "-" * 50)
         result = core.run(user=user, database=database, query=query, context=context)
 
-        # Store for next iteration
         if result.get("success"):
-            result["query"] = query
             last_result = result
+            
+            # --- Display Logic --
+            ana = result['analysis']
+            viz = result['visualization']
 
-        # Display results
-        if not result["success"]:
-            print(f"\n❌ Error: {result['error']}")
-            continue
+            print(f"\n✅ Analysis Complete")
+            print(f"📝 Thought: {ana['metadata'].get('explanation', 'N/A')}")
+            print(f"💾 SQL: {ana['metadata']['sql']}")
+            
+            if viz.get("html_path"):
+                print(f"🌐 Plotly Chart: {viz['html_path']}")
+                # Automatically open the browser to see the interactive chart
+                webbrowser.open(f"file://{os.path.abspath(viz['html_path'])}")
+            
+            if viz["insights"]:
+                print(f"\n💡 Insights:")
+                for i in viz["insights"]: print(f"   • {i}")
 
-        # Analysis info
-        print(f"\n📊 SQL executed:")
-        print(f"   {result['analysis']['metadata']['sql']}")
-        print(f"\n📋 Rows returned: {result['analysis']['metadata']['row_count']}")
-
-        # Visualization info
-        if result["visualization"]["path"]:
-            print(f"\n🎨 Chart saved to: {result['visualization']['path']}")
-            print(f"   Chart type: {result['visualization']['chart_type']}")
+            if viz["suggestions"]:
+                print(f"\n🔍 Next Steps:")
+                for s in viz["suggestions"]: print(f"   • {s}")
         else:
-            print(f"\n📭 No chart generated (no data found)")
+            print(f"\n❌ Error: {result['error']}")
 
-        # Insights
-        if result["visualization"]["insights"]:
-            print(f"\n💡 Insights:")
-            for insight in result["visualization"]["insights"]:
-                print(f"   • {insight}")
-
-        # Suggestions
-        if result["visualization"]["suggestions"]:
-            print(f"\n🔍 Suggestions:")
-            for suggestion in result["visualization"]["suggestions"]:
-                print(f"   • {suggestion}")
-
-        print("\n" + "-" * 50)
-
+        print("-" * 50)
 
 if __name__ == "__main__":
     main()
