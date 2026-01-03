@@ -80,6 +80,10 @@ class Core:
             database_path=db_path,
             context=context
         )
+        
+        # Add source to metadata
+        if analysis_result.get("success"):
+            analysis_result["metadata"]["source"] = database
 
         if not analysis_result["success"]:
             return {
