@@ -36,9 +36,6 @@ USER QUERY: "Show me top 5 genres by track count"
 └─────────────────────────────────────────────────────────────┘
 """
 
-
-# TODO IMRPOVEMENT COULD BE USING REACT LOOP ??
-
 class AnalysisAgent:
     def __init__(self, api_key: str = None):
         self.client = OpenAI(api_key=api_key)
@@ -129,25 +126,30 @@ class AnalysisAgent:
             return {"success": False, "error": str(e), "data": [], "metadata": {}}
 
     def _get_schema(self, database_path: str) -> str:
-        """
-        Extract schema from SQLite database
-        """
-        conn = sqlite3.connect(database_path)
-        cursor = conn.cursor()
+            """
+            Extract schema from SQLite database
 
-        # Get all tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
+            ! This method has perhaps scalability issues if database is becomes very large.
+            """
+            conn = sqlite3.connect(database_path)
+            cursor = conn.cursor()
 
-        schema_parts = []
-        for table in tables:
-            cursor.execute(f"PRAGMA table_info({table})")
-            columns = cursor.fetchall()
-            column_defs = [f"  {col[1]} ({col[2]})" for col in columns]
-            schema_parts.append(f"{table}:\n" + "\n".join(column_defs))
+            # Get all tables 
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0] for row in cursor.fetchall()]
 
-        conn.close()
-        return "\n\n".join(schema_parts)
+            schema_parts = []
+            for table in tables:
+                cursor.execute(f'PRAGMA table_info("{table}")')
+                columns = cursor.fetchall()
+                column_defs = [f'  "{col[1]}" ({col[2]})' for col in columns]
+                schema_parts.append(f'"{table}":\n' + "\n".join(column_defs))
+
+            conn.close()
+            return "\n\n".join(schema_parts)
+    
+
+
 
     def _generate_sql(self, query: str, schema: str, context: dict = None) -> tuple:
         """

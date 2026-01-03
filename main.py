@@ -4,8 +4,6 @@ from core.core import Core
 
 # Currently CLI
 
-# TODO Make possible to take in multiple questions at once (comprising single database), and make follow up questions possible
-
 def main():
     # Load API key
     load_dotenv()
