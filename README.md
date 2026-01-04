@@ -1,7 +1,9 @@
 
-## DataPro -- An Agentic AI for Data Analysis and Visualization. (Prosus Assignment)
+## DataPro -- An Agentic AI for Data Analysis and Visualization. 
 
-Agentic AI project on data analysis/visualization for Prosus  
+
+Twin agent system for data analysis/visualization for Natural Language Queries (Prosus Assignment)
+
 
 ## Setup
 
