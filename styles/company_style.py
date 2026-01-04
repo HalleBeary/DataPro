@@ -34,5 +34,3 @@ COMPANY_STYLE = {
     "logo_position": "upper right",
     "logo_size": 0.1
 }
-
-# TODO How do we capture PROSUS identity

@@ -75,23 +75,24 @@ def main():
 
     last_result = None  # Track previous result for context
 
-    while True:
+    while True: # Loop ensures possibility for follow-up questions
+
         # Get query
         print()
         query = input("What would you like to analyze? ").strip()
 
         # Handle exit
         if query.lower() in ["exit", "quit", "q"]:
-            print("\nGoodbye! 👋")
+            print("\nGoodbye!")
             break
 
-        # Handle database switch
+        # Possible to switch databases via /switch
         if query.lower() == "/switch":
             if len(allowed_dbs) == 1:
                 print("Only one database available.")
                 continue
             
-            print()
+            print() 
             for i, db_name in enumerate(allowed_dbs, 1):
                 description = core.databases["databases"][db_name].get("description", "No description")
                 print(f"  [{i}] {db_name} - {description}")

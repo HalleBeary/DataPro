@@ -101,7 +101,13 @@ class VisualizationAgent:
 
     def run(self, data: list, metadata: dict, user_query: str = "") -> dict:
         """
-        Main entry point: data → analysis → styled chart
+        Visualization pipeline:
+        1. Call _analyze_data(): Agent decides how to visualize the SQL data it received from analysis agent
+        2. Call _create_chart(): Obtains decisions, and creates appropriate chart with Prosus company styling
+
+        Inputs: data/metadata and user query
+        Returns: Dictionary consisting of image path, chart_type, insights from data and follow-up suggestions
+
         """
         try:
             # Handling of empty data
@@ -141,9 +147,17 @@ class VisualizationAgent:
                 "suggestions": []
             }
 
+
     def _analyze_data(self, data: list, metadata: dict, user_query: str) -> dict:
         """
-        AI decides how to visualize the data using function calling
+        Visualization Agent: Decides how to visualize the data it receives.
+        Inputs are SQL data/metadata + description and user query.
+        Agent - System prompt: Data visualization expert. 
+              - Rules mostly encompass guidelines how and when to handle different chart-types. 
+              - Yields 1-2 insights from the data
+              - Suggests one relevant and actionable follow-up query
+              - Tools: Uses extensive tool list (defined above) describing different properties of graph (chart_type, labels, ticks, etc) to generate standardized output.
+        Returns dict consisting of properties for graph, insights and suggestion    
         """
         system_prompt = """You are a data visualization expert.
 Your job is to analyze data and decide the best way to visualize it.
@@ -160,27 +174,28 @@ RULES:
 - Make suggestions specific and actionable (include filters, time period, metrics)
 - Highlight the most important data point (usually index 0 for rankings)
 """
-
+        # User prompt provides data for agent to visualize. 
+        # Visualisation decide HOW to visualize, not WHAT -> Doesn't need all data (Token issue as well). First 10 rows suffices. Chart method does use all data
         user_prompt = f"""Analyze this data and create a visualization.
 
 USER QUERY: {user_query}
 
-DATA (first 10 rows): {json.dumps(data[:10], indent=2)}
+DATA (first 10 rows): {json.dumps(data[:10], indent=2)} 
 
 COLUMNS: {metadata.get('columns', [])}
 ROW COUNT: {metadata.get('row_count', len(data))}
 """
-
-        for attempt in range(self.max_retries):
+        # Retry loop if API catches any errors
+        for attempt in range(self.max_retries): 
             try:
-                response = self.client.chat.completions.create(
+                response = self.client.chat.completions.create( # API call with tools defined above
                     model=self.model,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_prompt}
                     ],
                     tools=self.tools,
-                    tool_choice="auto", #{"type": "function", "function": {"name": "create_chart"}},
+                    tool_choice="auto", #{"type": "function", "function": {"name": "create_chart"}}, 
                     temperature=0
                 )
 
@@ -188,8 +203,9 @@ ROW COUNT: {metadata.get('row_count', len(data))}
                 tool_call = response.choices[0].message.tool_calls[0]
                 decisions = json.loads(tool_call.function.arguments)
 
-                return decisions
+                return decisions # returns Dict with chart_type, title, columns, insights, suggestions
 
+            # error handling, same as analysis agent
             except AuthenticationError:
                 raise Exception("Invalid API key. Please check your OPENAI_API_KEY.")
 
@@ -222,6 +238,9 @@ ROW COUNT: {metadata.get('row_count', len(data))}
     def _create_chart(self, data: list, metadata: dict, decisions: dict) -> str:
             """
             Create the actual chart using matplotlib with Prosus styling
+
+            Takes in SQL data in full (data + metadata), and agent decisions (is it a bar/pie chart etc)
+            Returns filepath to PNG image
             """
             # === EXTRACT PARAMETERS ===
             chart_type = decisions.get("chart_type", "bar")
@@ -347,7 +366,11 @@ ROW COUNT: {metadata.get('row_count', len(data))}
             label.set_horizontalalignment('right')
 
     def _draw_line(self, ax, data, x_values, y_values, x_col, y_col, metadata, style):
-        """Draw line chart"""
+        """Draw line chart
+        
+        Bit more complex as it handles both single and multi-series data
+        
+        """
         unique_x = len(set(x_values))
         has_multiple_series = unique_x < len(x_values)
 

@@ -74,8 +74,8 @@ class AnalysisAgent:
 
     def run(self, query: str, database_path: str, context: dict = None) -> dict:
         """
-        Main data-analysis agent pipeline. Built-in SQL self-correction REACT loop to handle syntax errors.
-        1. Call _get_schema(): Obtain available databases for agent
+        Main data-analysis agent pipeline. Built-in SQL self-correction loop to handle syntax errors.
+        1. Call _get_schema(): Obtain available database for agent
         2. Call _generate_sql(): Generates SQL query from NL input query using database schema
         3. Call _execute_sql(): Executes SQL query to obtain SQL data and description from database
         """
@@ -108,7 +108,7 @@ class AnalysisAgent:
                     results, columns = self._execute_sql(database_path, sql)
                     
                     # If execution succeeds, break the loop and format data
-                    data = [dict(zip(columns, row)) for row in results]
+                    data = [dict(zip(columns, row)) for row in results]  # Convert list of tuples to list of dicts for Visualization Agent
                     return {
                         "success": True,
                         "data": data,
@@ -121,7 +121,7 @@ class AnalysisAgent:
                         }
                     }
                 except Exception as e:
-                    print(f"⚠️ Attempt {attempt + 1} failed: {str(e)}")
+                    print(f"Attempt {attempt + 1} failed: {str(e)}")
                     last_error = str(e)
                     
 
@@ -145,7 +145,8 @@ class AnalysisAgent:
             and returns string of all tables and columns that are accessible. 
             Schema is included in prompt for the agent to know which databases it can access.
 
-            ! Method has perhaps scalability issues if database is becomes very large.
+            ! Method has perhaps scalability issues if database is becomes very large (slow, token limit concern, as it returns all tables)
+            -> Solve by only getting relevant tables: fetch names, keyword match or let AI decide
             """
             conn = sqlite3.connect(f"file:{database_path}?mode=ro", uri=True)  # Read only
             cursor = conn.cursor() # tool to execute SQL commands
@@ -156,7 +157,7 @@ class AnalysisAgent:
 
             schema_parts = [] # for each table, get its columns and add to the schema
             for table in tables:
-                cursor.execute(f'PRAGMA table_info("{table}")')
+                cursor.execute(f'PRAGMA table_info("{table}")') 
                 columns = cursor.fetchall()
                 column_defs = [f'  "{col[1]}" ({col[2]})' for col in columns]
                 schema_parts.append(f'"{table}":\n' + "\n".join(column_defs))
