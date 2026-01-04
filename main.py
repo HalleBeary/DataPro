@@ -136,7 +136,7 @@ def main():
             print(f"\n❌ Error: {result['error']}")
             continue
 
-        # Analysis info
+        # Analysis info 
         print(f"\n📊 SQL executed:")
         print(f"   {result['analysis']['metadata']['sql']}")
         print(f"\n📋 Rows returned: {result['analysis']['metadata']['row_count']}")

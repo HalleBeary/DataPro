@@ -38,7 +38,6 @@ from styles.company_style import COMPANY_STYLE
 │    "suggestions": ["Break down Rock by artist?"]            │
 │  }                                                          │
 └─────────────────────────────────────────────────────────────┘
-
 """
 
 
@@ -105,7 +104,7 @@ class VisualizationAgent:
         Main entry point: data → analysis → styled chart
         """
         try:
-            # Handle empty data
+            # Handling of empty data
             if not data or len(data) == 0:
                 return {
                     "success": True,
