@@ -67,6 +67,16 @@ class TestCoreFunctionality:
         1. Query: "Show me top 5 genres by number of tracks" 
         2. Analysis agent: convert query to SQL -> retrieve data from database -> pass data to visualization agent.
         3.  Visualisation agent: convert SQL data to appropriate visualization
+
+        
+        return {
+            "success": True,
+            "user": user,
+            "database": database,
+            "query": query,
+            "analysis": analysis_result,
+            "visualization": viz_result
+        }
         
         """
         result = core.run(
@@ -82,14 +92,17 @@ class TestCoreFunctionality:
         
         # See if metadata exists
         assert "sql" in result["analysis"]["metadata"]
-        assert "columns" in result["analysis"]["metadata"]
+        assert "columns" in result["analysis"]["metadata"] # 
+        assert "SELECT" in result["analysis"]["metadata"]["sql"].upper() # Agent generates SQL
         
         # Is visualization created
-        assert result["visualization"]["path"] is not None
-        assert os.path.exists(result["visualization"]["path"])
+        assert result["visualization"]["path"] is not None 
+        assert os.path.exists(result["visualization"]["path"]) # output created any image?
+        assert result["visualization"]["chart_type"] in ["bar", "line", "pie", "scatter"] # any chart created?
 
         print(f"   Test 3 passed: Full pipeline works")
         print(f"   Rows: {len(result['analysis']['data'])}")
+        print(f"   Chart-type {result['visualization']['chart_type']}")
         print(f"   SQL: {result['analysis']['metadata']['sql'][:80]}...")
 
     
