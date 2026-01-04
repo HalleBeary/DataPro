@@ -1,5 +1,5 @@
 
-## DataPro -- An Agentic AI for Data Analysis and Visualization. 
+## DataPro -- An Autonomous AI Agent for Data Analysis and Visualization. 
 
 
 Twin agent system for data analysis/visualization for Natural Language Queries (Prosus Assignment)
