@@ -89,9 +89,9 @@ class AnalysisAgent:
             explanation = None
             last_error = None
             
-            # Step 2: Generation and Correction Loop to handle syntax errors (Small REACT loop)
-            for attempt in range(self.max_retries): # 
-                # If this is a retry, modify the prompt to include the error
+            # Step 2: Generation and Correction Loop to handle syntax errors
+            for attempt in range(self.max_retries):
+                # If you get an error, the prompt is modified by including the error {last_error}
                 if last_error: 
                     correction_prompt = (
                         f"Your previous SQL query failed with this error: {last_error}\n"
